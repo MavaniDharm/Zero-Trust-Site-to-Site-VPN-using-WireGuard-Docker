@@ -7,129 +7,132 @@
 <img src="https://img.shields.io/badge/Status-Lab%20Project-success" />
 </p>
 
-📌 Project Overview
+## 📌 Project Overview
 
-This project demonstrates how to build a Site-to-Site VPN using WireGuard and Docker.
+This proof of concept (PoC) builds a **Site-to-Site VPN** with **WireGuard** and **Docker**.
 
-Two separate private networks (Site A and Site B) are connected securely through WireGuard VPN tunnels.
+Two isolated private networks (**Site A** and **Site B**) are joined by an encrypted WireGuard tunnel between two gateway containers. Devices in both networks can talk to each other without exposing their internal services directly to the internet. A **default-deny firewall** on each gateway applies the Zero Trust idea: nothing is forwarded unless a rule explicitly allows it.
 
-The goal is to allow devices in both networks to communicate securely without exposing their private services directly to the internet.
+## 🎯 Project Objectives
 
-🎯 Project Objectives
-🔐 Establish a secure WireGuard VPN tunnel.
-🐳 Deploy VPN gateways using Docker containers.
-🌐 Connect two isolated Docker networks.
-🔄 Enable communication between Site A and Site B.
-🛡️ Configure IP forwarding and firewall rules.
-📡 Test private network connectivity.
-🏗️ Network Architecture
-text
-                 SITE-TO-SITE VPN
-                       
-       SITE A                    SITE B
-   172.28.1.0/24             172.28.2.0/24
-         |                         |
-         |                         |
-  VPN Gateway A              VPN Gateway B
-  172.28.1.254               172.28.2.254
-  10.13.13.1                 10.14.14.1
-         |                         |
-         +------ WireGuard --------+
-                 VPN Tunnel
-              172.18.0.0/16
-                        
-         |                         |
-   Docker Client A           Docker Client B
-   172.28.1.10                172.28.2.10
+- 🔐 Establish a secure WireGuard VPN tunnel.
+- 🐳 Deploy the VPN gateways as Docker containers.
+- 🌐 Connect two isolated Docker networks.
+- 🔄 Enable communication between Site A and Site B.
+- 🛡️ Configure IP forwarding and default-deny firewall rules.
+- 📡 Test private network connectivity and inspect the encrypted traffic.
 
+## 🏗️ Network Architecture
 
-Note: The diagram represents the intended architecture. Client A is optional and Client B is used in the current lab configuration.
+```text
+                    SITE-TO-SITE VPN
 
-🛠️ Technologies Used
-Technology	Purpose
-Kali Linux	Host operating system
-Docker	Containerization
-Docker Compose	Container orchestration
-WireGuard	VPN tunnel
-Linux iptables	Firewall and NAT
-Alpine Linux	Test client
-📋 IP Address Configuration
-Component	IP Address
-Site A Network	172.28.1.0/24
-Site B Network	172.28.2.0/24
-VPN Transport Network	172.18.0.0/16
-Gateway A	172.28.1.254
-Gateway B	172.28.2.254
-Gateway A VPN IP	10.13.13.1
-Gateway B VPN IP	10.14.14.1
-Site B Client	172.28.2.10
-📦 Step 1: Install Required Packages
+        SITE A                              SITE B
+    172.28.1.0/24                       172.28.2.0/24
+          |                                   |
+          |                                   |
+   VPN Gateway A                       VPN Gateway B
+   LAN  172.28.1.254                   LAN  172.28.2.254
+   VPN  10.13.13.1                     VPN  10.14.14.1
+   Link 172.18.0.2                     Link 172.18.0.3
+          |                                   |
+          +-------- WireGuard tunnel ---------+
+                 UDP 51820 over the
+              transport network 172.18.0.0/16
+          |                                   |
+   Client A (optional)                  Client B (Alpine)
+   172.28.1.10                          172.28.2.10
+```
 
-Update Kali Linux:
+> Client A is optional. The lab traffic is verified mainly with Client B at Site B, and a Site A host at `172.28.1.10` is used for the reverse test.
 
-bash
+## 🛠️ Technologies Used
+
+| Technology | Purpose |
+|---|---|
+| Kali Linux | Host operating system (VirtualBox VM) |
+| Docker | Containerization |
+| Docker Compose | Container orchestration |
+| WireGuard | VPN tunnel |
+| iptables | Firewall, forwarding rules and NAT |
+| Alpine Linux | Test client |
+| tcpdump | Packet capture |
+
+## 📋 IP Address Configuration
+
+| Component | IP Address |
+|---|---|
+| Site A network | `172.28.1.0/24` |
+| Site B network | `172.28.2.0/24` |
+| VPN transport network | `172.18.0.0/16` |
+| Gateway A (LAN) | `172.28.1.254` |
+| Gateway B (LAN) | `172.28.2.254` |
+| Gateway A (transport) | `172.18.0.2` |
+| Gateway B (transport) | `172.18.0.3` |
+| Gateway A VPN IP | `10.13.13.1` |
+| Gateway B VPN IP | `10.14.14.1` |
+| Site B client | `172.28.2.10` |
+
+---
+
+## 📦 Step 1: Install Required Packages
+
+```bash
 sudo apt update
-sudo apt upgrade -y
+sudo apt install docker.io docker-compose tcpdump -y
+```
 
+Enable and start Docker:
 
-Install Docker and Docker Compose:
-
-bash
-sudo apt install docker.io docker-compose-plugin wireguard-tools iptables -y
-
-
-Enable Docker:
-
-bash
+```bash
 sudo systemctl enable docker
 sudo systemctl start docker
+```
 
+Check the versions:
 
-Check Docker:
-
-bash
+```bash
 sudo docker --version
-sudo docker compose version
+sudo docker-compose --version
+```
 
-📁 Step 2: Create Project Directory
-bash
+![Install packages](screenshots/01-install-docker-packages.png)
+
+*Docker, Docker Compose and tcpdump were already at the newest version, and the Docker service is enabled at boot.*
+
+## 📁 Step 2: Create the Project Directory
+
+```bash
 mkdir -p ~/zero-trust-vpn
 cd ~/zero-trust-vpn
-
-
-Create configuration directories:
-
-bash
-mkdir -p wg_config_a/wg_confs
-mkdir -p wg_config_b/wg_confs
-
+mkdir -p wg_config_a wg_config_b
+```
 
 Project structure:
 
-text
+```text
 zero-trust-vpn/
 │
 ├── docker-compose.yml
 │
 ├── wg_config_a/
 │   └── wg_confs/
-│       └── wg0.conf
+│       └── wg0.conf        (generated on first start)
 │
-└── wg_config_b/
-    └── wg_confs/
-        └── wg0.conf
+├── wg_config_b/
+│   └── wg_confs/
+│       └── wg0.conf        (generated on first start)
+│
+└── screenshots/
+```
 
-⚙️ Step 3: Configure Docker Compose
+## ⚙️ Step 3: Configure Docker Compose
 
-Create the Docker Compose file:
-
-bash
+```bash
 nano docker-compose.yml
+```
 
-
-Paste the following configuration:
-
-yaml
+```yaml
 services:
 
   vpn_gateway_a:
@@ -222,190 +225,246 @@ networks:
     ipam:
       config:
         - subnet: 172.18.0.0/16
+```
 
+![docker-compose.yml](screenshots/02-docker-compose-yml.png)
 
-Save the file.
+*Each gateway has the `NET_ADMIN` capability and sits on its own site network plus the shared transport network, each with a fixed IP.*
 
-🔑 Step 4: Generate WireGuard Configurations
+## 🚀 Step 4: Start the Containers
 
-Start the containers initially so LinuxServer WireGuard can generate its configuration files:
+```bash
+sudo docker-compose up -d
+```
 
-bash
-sudo docker compose up -d
+The first start makes the LinuxServer WireGuard image generate its keys and `wg0.conf` for each gateway.
 
+Check the logs:
 
-Generated configurations:
+```bash
+sudo docker logs vpn-gateway-a
+sudo docker logs vpn-gateway-b
+```
 
-text
-wg_config_a/wg_confs/wg0.conf
-wg_config_b/wg_confs/wg0.conf
+![Containers running](screenshots/03-docker-compose-up.png)
 
+*All 6 resources started: both gateways, the Site B client and the three networks.*
 
-The two gateways initially generate their own VPN keys.
+![Gateway B logs](screenshots/04-gateway-b-logs.png)
 
-Important: Do not overwrite the generated private keys or client peer configurations.
+*Gateway B logs show the LinuxServer.io WireGuard container initialising.*
 
-🔐 Step 5: Configure Site-to-Site Peers
+> **Important:** Do not overwrite the generated private keys. Only add the `[Peer]` block described below.
 
-Obtain Gateway A's public key:
+## 🔐 Step 5: Configure Site-to-Site Peers
 
-bash
-sudo docker exec vpn-gateway-a wg show
+Read each gateway's **public** key:
 
-
-Obtain Gateway B's public key:
-
-bash
-sudo docker exec vpn-gateway-b wg show
-
+```bash
+sudo cat wg_config_a/server/publickey-server
+sudo cat wg_config_b/server/publickey-server
+```
 
 Edit Gateway A:
 
-bash
+```bash
 sudo nano wg_config_a/wg_confs/wg0.conf
+```
 
+Add (replace the placeholder with Gateway B's real public key):
 
-Add the following peer entry, replacing the public key with Gateway B's actual public key:
-
-ini
+```ini
 [Peer]
 PublicKey = GATEWAY_B_PUBLIC_KEY
 AllowedIPs = 10.14.14.1/32, 172.28.2.0/24
 Endpoint = 172.18.0.3:51820
 PersistentKeepalive = 25
-
+```
 
 Edit Gateway B:
 
-bash
+```bash
 sudo nano wg_config_b/wg_confs/wg0.conf
+```
 
+Add (replace the placeholder with Gateway A's real public key):
 
-Add Gateway A:
-
-ini
+```ini
 [Peer]
 PublicKey = GATEWAY_A_PUBLIC_KEY
 AllowedIPs = 10.13.13.1/32, 172.28.1.0/24
 Endpoint = 172.18.0.2:51820
 PersistentKeepalive = 25
+```
 
+Restart both gateways:
 
-⚠️ Replace both placeholders with actual public keys. Never share private keys or preshared keys publicly.
+```bash
+sudo docker-compose restart vpn_gateway_a vpn_gateway_b
+```
 
-🔄 Step 6: Restart VPN Gateways
+![WireGuard peer configuration](screenshots/05-wireguard-peer-config.png)
 
-Apply the configuration:
+*Public keys are read, `wg0.conf` is edited and the gateways are restarted.*
 
-bash
-sudo docker compose restart vpn_gateway_a vpn_gateway_b
+### 🧩 Troubleshooting seen in this lab
 
-🌐 Step 7: Configure IP Forwarding
+| Message | Cause | Fix |
+|---|---|---|
+| `Key is not the correct length or format: GATEWAY_B_PUBLIC_KEY` | The placeholder was left in `wg0.conf` | Replace it with the real public key |
+| `wg-quick: 'wg0' is not a WireGuard interface` (on `wg-quick down`) | The interface was not up yet | Safe to ignore, then run `wg-quick up wg0` |
 
-The Docker Compose configuration enables IPv4 forwarding inside both gateway containers.
+After fixing the keys, bring the tunnel up again if needed:
 
-The WireGuard configurations also contain firewall rules:
+```bash
+sudo docker exec vpn-gateway-a wg-quick down wg0
+sudo docker exec vpn-gateway-a wg-quick up wg0
+sudo docker exec vpn-gateway-b wg-quick down wg0
+sudo docker exec vpn-gateway-b wg-quick up wg0
+```
 
-ini
-PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth+ -j MASQUERADE
+## 🛡️ Step 6: Default-Deny Firewall (Zero Trust Policy)
 
-PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth+ -j MASQUERADE
+Block all forwarding by default, then allow only what is needed.
 
+**Gateway A**
 
-These rules allow forwarding through the VPN interface and provide NAT for outgoing traffic.
+```bash
+sudo docker exec vpn-gateway-a iptables -P FORWARD DROP
+sudo docker exec vpn-gateway-a iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo docker exec vpn-gateway-a iptables -A FORWARD -i wg0 -o eth+ -s 10.14.14.0/24 -d 172.28.1.0/24 -j ACCEPT
+```
 
-📡 Step 8: Test VPN Connectivity
+**Gateway B**
 
-From Gateway A, test Gateway B:
+```bash
+sudo docker exec vpn-gateway-b iptables -P FORWARD DROP
+sudo docker exec vpn-gateway-b iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo docker exec vpn-gateway-b iptables -A FORWARD -i wg0 -o eth+ -s 10.13.13.0/24 -d 172.28.2.0/24 -j ACCEPT
+```
 
-bash
-sudo docker exec vpn-gateway-a ping -c 4 10.14.14.1
+![Default-deny firewall](screenshots/06-iptables-default-deny.png)
 
+*`FORWARD` defaults to `DROP`. Only established traffic and the peer's VPN subnet reaching the local site subnet are accepted.*
 
-Test Site B client:
+> ⚠️ The `PostUp` lines that the LinuxServer image can generate may contain `iptables -A FORWARD -i %i -j ACCEPT`. That accepts all forwarded traffic and would weaken this policy. Review `PostUp` if you want strict default-deny.
 
-bash
+### 💾 Persistence
+
+Rules added with `docker exec` live only inside the running container and are lost when the container is recreated. The lab also installs `iptables-persistent` on the Kali host:
+
+```bash
+sudo apt install iptables-persistent -y
+```
+
+![iptables-persistent](screenshots/08-iptables-persistent.png)
+
+To make the gateway rules permanent, move them into the `PostUp` line of each `wg0.conf` (not tested in this lab).
+
+## 🖥️ Step 7: Prepare the Site B Test Client
+
+```bash
+sudo docker exec site-b-client apk update
+sudo docker exec site-b-client apk add iputils curl
+```
+
+![Site B client](screenshots/07-site-b-client-setup.png)
+
+*`iputils` and `curl` are added so the Alpine client can run ping and HTTP tests.*
+
+## 📡 Step 8: Test VPN Connectivity
+
+From Gateway A:
+
+```bash
 sudo docker exec vpn-gateway-a ping -c 4 172.28.2.10
+sudo docker exec vpn-gateway-a ping -c 4 10.14.14.1
+```
 
+From Gateway B:
 
-From Gateway B, test Gateway A:
-
-bash
+```bash
 sudo docker exec vpn-gateway-b ping -c 4 10.13.13.1
-
-
-Test Site A client, if configured:
-
-bash
 sudo docker exec vpn-gateway-b ping -c 4 172.28.1.10
+```
 
-📊 Step 9: Monitor WireGuard Tunnel
+![Ping Gateway A to Site B](screenshots/09-ping-gateway-a-to-site-b.png)
 
-Display WireGuard status:
+*Gateway A reaches the Site B client and Gateway B's VPN IP with 0% packet loss. TTL 63 shows the client sits one routed hop behind Gateway B.*
 
-bash
+![Ping in both directions](screenshots/10-ping-both-directions.png)
+
+*Gateway B also reaches the Site A host `172.28.1.10`: 4 of 4 replies, 0% loss.*
+
+![Continuous ping](screenshots/12-ping-continuous-test.png)
+
+*A longer `ping -c 10` run from Gateway A to `172.28.2.10` keeps receiving replies.*
+
+### Result summary
+
+| Test | Result |
+|---|---|
+| Gateway A → `172.28.2.10` | 4/4 replies, 0% loss, avg ≈ 3.2 ms |
+| Gateway A → `10.14.14.1` | 4/4 replies, 0% loss, avg ≈ 2.6 ms |
+| Gateway B → `10.13.13.1` | 4/4 replies, 0% loss, avg ≈ 4.5 ms |
+| Gateway B → `172.28.1.10` | 4/4 replies, 0% loss, avg ≈ 1.9 ms |
+
+## 🔍 Step 9: Verify Encrypted Traffic with tcpdump
+
+```bash
+sudo tcpdump -ni any udp port 51820
+```
+
+While pings are running, only UDP traffic between the two gateways appears on the transport network:
+
+![tcpdump UDP 51820](screenshots/11-tcpdump-udp-51820.png)
+
+| UDP length | Meaning |
+|---|---|
+| 148 bytes | WireGuard handshake initiation |
+| 92 bytes | WireGuard handshake response |
+| 32 bytes | Keepalive |
+| 128 bytes | Encrypted data (carrying the ping packets) |
+
+The ping contents are not readable on the transport network, which confirms the traffic is encrypted inside the tunnel.
+
+You can also check the tunnel state on each gateway:
+
+```bash
 sudo docker exec vpn-gateway-a wg show
-
-bash
 sudo docker exec vpn-gateway-b wg show
+```
 
+A recent handshake and increasing transfer counters show that traffic is passing through the tunnel.
 
-Check tunnel traffic counters:
+---
 
-bash
-sudo docker exec vpn-gateway-a wg show
+## 🔒 Security Best Practices
 
+- Never upload private keys or preshared keys to GitHub.
+- Only share public keys. Check every screenshot before publishing.
+- Keep the firewall on `FORWARD DROP` and allow only required flows.
+- Use dedicated VPN subnets for each gateway.
+- Update Docker images regularly.
+- Restrict access to management interfaces.
 
-A successful handshake and increasing transfer counters indicate that encrypted traffic is passing through the tunnel.
+## 🎓 Learning Outcomes
 
-📸 Project Screenshots
+- WireGuard configuration: keys, peers, `AllowedIPs`, endpoints and keepalive.
+- Docker bridge networks and fixed container IPs.
+- Site-to-Site VPN architecture.
+- Linux IP forwarding, NAT and default-deny firewall rules.
+- Troubleshooting with `ping`, `wg`, `iptables` and `tcpdump`.
 
-Add your screenshots here after completing each step.
+## 🚀 Future Improvements
 
-Screenshot	Description
-01	Docker containers running
-02	Docker network configuration
-03	Gateway A WireGuard status
-04	Gateway B WireGuard status
-05	Gateway A to Gateway B ping
-06	Site A to Site B client ping
-07	UDP traffic captured using tcpdump
+- Add a dedicated Site A test client.
+- Move firewall rules into `PostUp` so they persist across restarts.
+- Allow specific services and ports instead of whole subnets.
+- Add centralized logging and traffic monitoring.
+- Connect additional remote sites.
 
-Example:
-
-markdown
-![Docker Containers](screenshots/docker-containers.png)
-
-![WireGuard Status](screenshots/wireguard-status.png)
-
-![VPN Connectivity](screenshots/vpn-connectivity.png)
-
-🔒 Security Best Practices
-Never upload private keys to GitHub.
-Never upload preshared keys.
-Do not expose VPN configuration secrets.
-Use firewall rules to restrict unnecessary traffic.
-Use dedicated VPN subnets.
-Regularly update Docker images.
-Restrict access to management interfaces.
-🎓 Learning Outcomes
-
-Through this project, I learned:
-
-WireGuard VPN configuration.
-Docker networking and bridge networks.
-Site-to-Site VPN architecture.
-Public and private key authentication.
-Linux IP forwarding.
-Firewall and NAT configuration.
-Network troubleshooting using ping, wg and tcpdump.
-🚀 Future Improvements
-Add a Site A test client.
-Implement firewall-based access restrictions.
-Add centralized VPN monitoring.
-Implement logging and traffic monitoring.
-Integrate additional remote sites.
-👨‍💻 Author
+## 👨‍💻 Author
 
 Cybersecurity / Network Security Lab Project
 
@@ -413,7 +472,7 @@ Built using Kali Linux, Docker and WireGuard.
 
 ⭐ If you find this project useful, consider giving this repository a star!
 
-#CyberSecurity #WireGuard #Docker #VPN #ZeroTrust #NetworkSecurity #KaliLinux
+`#CyberSecurity` `#WireGuard` `#Docker` `#VPN` `#ZeroTrust` `#NetworkSecurity` `#KaliLinux`
 
 Cybersecurity / Network Security Lab Project
 
