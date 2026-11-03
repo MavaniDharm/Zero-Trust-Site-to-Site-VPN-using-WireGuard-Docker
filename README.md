@@ -1,4 +1,4 @@
-🔐 Zero Trust Site-to-Site VPN using WireGuard & Docker
+# 🔐 Zero Trust Site-to-Site VPN using WireGuard & Docker
 
 <p align="center">
 <img src="https://img.shields.io/badge/Platform-Kali%20Linux-blue?logo=kalilinux" />
@@ -96,8 +96,6 @@ sudo docker --version
 sudo docker-compose --version
 ```
 
-![Install packages](screenshots/01-install-docker-packages.png)
-
 *Docker, Docker Compose and tcpdump were already at the newest version, and the Docker service is enabled at boot.*
 
 ## 📁 Step 2: Create the Project Directory
@@ -123,7 +121,6 @@ zero-trust-vpn/
 │   └── wg_confs/
 │       └── wg0.conf        (generated on first start)
 │
-└── screenshots/
 ```
 
 ## ⚙️ Step 3: Configure Docker Compose
@@ -227,8 +224,6 @@ networks:
         - subnet: 172.18.0.0/16
 ```
 
-![docker-compose.yml](screenshots/02-docker-compose-yml.png)
-
 *Each gateway has the `NET_ADMIN` capability and sits on its own site network plus the shared transport network, each with a fixed IP.*
 
 ## 🚀 Step 4: Start the Containers
@@ -246,11 +241,7 @@ sudo docker logs vpn-gateway-a
 sudo docker logs vpn-gateway-b
 ```
 
-![Containers running](screenshots/03-docker-compose-up.png)
-
 *All 6 resources started: both gateways, the Site B client and the three networks.*
-
-![Gateway B logs](screenshots/04-gateway-b-logs.png)
 
 *Gateway B logs show the LinuxServer.io WireGuard container initialising.*
 
@@ -303,8 +294,6 @@ Restart both gateways:
 sudo docker-compose restart vpn_gateway_a vpn_gateway_b
 ```
 
-![WireGuard peer configuration](screenshots/05-wireguard-peer-config.png)
-
 *Public keys are read, `wg0.conf` is edited and the gateways are restarted.*
 
 ### 🧩 Troubleshooting seen in this lab
@@ -343,8 +332,6 @@ sudo docker exec vpn-gateway-b iptables -A FORWARD -m conntrack --ctstate ESTABL
 sudo docker exec vpn-gateway-b iptables -A FORWARD -i wg0 -o eth+ -s 10.13.13.0/24 -d 172.28.2.0/24 -j ACCEPT
 ```
 
-![Default-deny firewall](screenshots/06-iptables-default-deny.png)
-
 *`FORWARD` defaults to `DROP`. Only established traffic and the peer's VPN subnet reaching the local site subnet are accepted.*
 
 > ⚠️ The `PostUp` lines that the LinuxServer image can generate may contain `iptables -A FORWARD -i %i -j ACCEPT`. That accepts all forwarded traffic and would weaken this policy. Review `PostUp` if you want strict default-deny.
@@ -357,8 +344,6 @@ Rules added with `docker exec` live only inside the running container and are lo
 sudo apt install iptables-persistent -y
 ```
 
-![iptables-persistent](screenshots/08-iptables-persistent.png)
-
 To make the gateway rules permanent, move them into the `PostUp` line of each `wg0.conf` (not tested in this lab).
 
 ## 🖥️ Step 7: Prepare the Site B Test Client
@@ -367,8 +352,6 @@ To make the gateway rules permanent, move them into the `PostUp` line of each `w
 sudo docker exec site-b-client apk update
 sudo docker exec site-b-client apk add iputils curl
 ```
-
-![Site B client](screenshots/07-site-b-client-setup.png)
 
 *`iputils` and `curl` are added so the Alpine client can run ping and HTTP tests.*
 
@@ -388,15 +371,9 @@ sudo docker exec vpn-gateway-b ping -c 4 10.13.13.1
 sudo docker exec vpn-gateway-b ping -c 4 172.28.1.10
 ```
 
-![Ping Gateway A to Site B](screenshots/09-ping-gateway-a-to-site-b.png)
-
 *Gateway A reaches the Site B client and Gateway B's VPN IP with 0% packet loss. TTL 63 shows the client sits one routed hop behind Gateway B.*
 
-![Ping in both directions](screenshots/10-ping-both-directions.png)
-
 *Gateway B also reaches the Site A host `172.28.1.10`: 4 of 4 replies, 0% loss.*
-
-![Continuous ping](screenshots/12-ping-continuous-test.png)
 
 *A longer `ping -c 10` run from Gateway A to `172.28.2.10` keeps receiving replies.*
 
@@ -416,8 +393,6 @@ sudo tcpdump -ni any udp port 51820
 ```
 
 While pings are running, only UDP traffic between the two gateways appears on the transport network:
-
-![tcpdump UDP 51820](screenshots/11-tcpdump-udp-51820.png)
 
 | UDP length | Meaning |
 |---|---|
@@ -465,14 +440,6 @@ A recent handshake and increasing transfer counters show that traffic is passing
 - Connect additional remote sites.
 
 ## 👨‍💻 Author
-
-Cybersecurity / Network Security Lab Project
-
-Built using Kali Linux, Docker and WireGuard.
-
-⭐ If you find this project useful, consider giving this repository a star!
-
-`#CyberSecurity` `#WireGuard` `#Docker` `#VPN` `#ZeroTrust` `#NetworkSecurity` `#KaliLinux`
 
 Cybersecurity / Network Security Lab Project
 
